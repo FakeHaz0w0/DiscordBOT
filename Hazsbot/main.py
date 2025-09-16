@@ -1,7 +1,23 @@
-# hazsbot_full_with_ship.py  — Hazsbot merged full version (Control Panel + Music Detection + Ship)
-# Required environment / secrets: DISCORD_BOT_TOKEN, DEEPSEEK_API_KEY
-# Optional environment / secrets: PANEL_GUILD_ID, PANEL_OWNER_ID
-# Save this file and run: python3 hazsbot_full_with_ship.py
+cat > main.py <<'PY'
+# main.py — Hazsbot (single-file)
+# Features: Control Panel, Music link detection, Automod, Wordle, Ship, Moderation, AI (?ask)
+# Requirements: discord.py, aiohttp, psutil (optional), openai
+#
+# Usage:
+# 1. Install deps:
+#    pip install discord.py aiohttp psutil openai
+# 2. Create env vars (see .env.example below)
+# 3. Run:
+#    python3 main.py
+#
+# Environment variables expected (common names supported):
+#   DISCORD_BOT_TOKEN  (or DISCORDBOTTOKEN)
+#   DEEPSEEK_API_KEY   (or DEEPSEEKAPIKEY)
+#   PANEL_GUILD_ID     (optional)
+#   PANEL_OWNER_ID     (optional)
+#
+# NOTE: This file is the single-file "main" version of your merged Hazsbot code.
+#       Keep your tokens secret — do not publish main.py with real tokens.
 
 import os
 import json
@@ -14,7 +30,7 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-# Optional deps (CPU/Memory & http)
+# Optional deps (may be absent)
 try:
     import psutil  # type: ignore
 except Exception:
@@ -28,7 +44,11 @@ except Exception:
 import discord
 from discord.ext import commands
 
-from openai import OpenAI
+# try to import OpenAI client (OpenRouter/DeepSeek usage)
+try:
+    from openai import OpenAI  # some OpenAI clients expose OpenAI class
+except Exception:
+    OpenAI = None
 
 # optional keep-alive helper for Replit (simple Flask ping endpoint)
 try:
@@ -39,15 +59,25 @@ except Exception:
         return
 
 # ---------------- CONFIG ----------------
-VERSION = "1.1.1"  # bumped for ship addition
+VERSION = "1.1.1"
 DATA_FILE = "servers.json"
 
-DISCORD_TOKEN = os.getenv("DISCORDBOTTOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEKAPIKEY")  # required for ?ask
+# Support both names just in case
+DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORDBOTTOKEN")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEKAPIKEY")
 
-# Panel ownership / binding (set these!)
-PANEL_GUILD_ID = int(os.getenv("PANEL_GUILD_ID", "1412743207481118772"))  # control panel server ID
-PANEL_OWNER_ID = int(os.getenv("PANEL_OWNER_ID", "1182976165510664202"))  # your user ID
+def _int_env(name: str, default: int) -> int:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+# Panel ownership / binding (set these if you want a control server)
+PANEL_GUILD_ID = _int_env("PANEL_GUILD_ID", 1412743207481118772)
+PANEL_OWNER_ID = _int_env("PANEL_OWNER_ID", 1182976165510664202)
 
 PRESEED_LOG_CHANNELS = {
     "commands": 1412743208827359346,
@@ -83,6 +113,7 @@ server_data = load_data()
 
 # ---------------- BOT SETUP ----------------
 async def _prefix_callable(bot, message):
+    # function called to resolve per-server prefix
     if not message.guild:
         return DEFAULT_PREFIX
     gid = str(message.guild.id)
@@ -93,9 +124,15 @@ async def _prefix_callable(bot, message):
 bot = commands.Bot(command_prefix=_prefix_callable, intents=intents)
 start_time = time.time()
 
-# DeepSeek / OpenRouter client
+# OpenRouter/DeepSeek client (best-effort; may be None)
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3.1:free"
-client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=DEEPSEEK_API_KEY)
+client = None
+if DEEPSEEK_API_KEY and OpenAI is not None:
+    try:
+        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=DEEPSEEK_API_KEY)
+    except Exception as e:
+        print(f"[init] OpenAI client init failed: {e}")
+        client = None
 
 # ---------------- HELPERS ----------------
 def ensure_guild(guild_id: int):
@@ -132,6 +169,10 @@ last_deleted_message = {}
 active_wordles = {}
 
 async def safe_send(destination, content=None, embed=None):
+    """
+    Helper that attempts to send either a content string or an embed and doesn't crash if sending fails.
+    destination can be a Context, TextChannel, Member (DM), etc.
+    """
     try:
         if embed:
             return await destination.send(embed=embed)
@@ -192,7 +233,7 @@ async def log_event(kind: str, content: str, embed: discord.Embed | None = None)
 
 # ---------------- AUTOMOD ----------------
 def check_profanity(text: str):
-    profanity = {"badword1", "badword2"}
+    profanity = {"badword1", "badword2"}  # replace with real list
     t = (text or "").lower()
     return any(p in t for p in profanity)
 
@@ -269,6 +310,7 @@ async def on_ready():
         await log_event("dashboard", "✅ Bot is online", embed)
     except Exception:
         pass
+    # resume any scheduled tasks persisted from before
     bot.loop.create_task(resume_schedules())
 
 @bot.event
@@ -395,6 +437,8 @@ async def on_message(message):
 async def get_ai_response(prompt, max_tokens=800, temperature=0.7):
     if not DEEPSEEK_API_KEY:
         return "(⚠) No DeepSeek API key configured. Set DEEPSEEK_API_KEY environment variable."
+    if client is None:
+        return "(⚠) AI client not initialized (OpenAI/OpenRouter lib missing or init failed)."
     try:
         loop = asyncio.get_event_loop()
         completion = await loop.run_in_executor(
@@ -412,6 +456,7 @@ async def get_ai_response(prompt, max_tokens=800, temperature=0.7):
                 timeout=30,
             )
         )
+        # depends on client lib shape
         return completion.choices[0].message.content.strip()
     except asyncio.TimeoutError:
         print("[get_ai_response] DeepSeek request timed out")
@@ -610,10 +655,7 @@ async def cmd_setleave(ctx, *, message: str):
     save_data(server_data)
     await safe_send(ctx, f"(＾▽＾) Updated leave message.")
 
-# ---------------- Moderation commands (continued in next section) ----------------
-# Warns, ban, kick, mute, pins, slowmode, audit are implemented below.
-
-# Warns
+# ---------------- Moderation commands ----------------
 def add_warning(guild_id: int, user_id: int, reason: str):
     gid = str(guild_id)
     ensure_guild(guild_id)
@@ -700,7 +742,6 @@ async def cmd_mute(ctx, member: discord.Member, minutes: int = 10, *, reason: st
     except Exception as e:
         await safe_send(ctx, f"(･_･;) Could not mute: {e}")
 
-# Pins / Slowmode / Bulkpin
 @bot.command(name="pin")
 async def cmd_pin(ctx, message_id: int):
     if not is_mod(ctx):
@@ -797,9 +838,8 @@ async def cmd_rps(ctx, choice: str):
         result = "You lose!"
     await safe_send(ctx, f"(＾▽＾) You: {choice} | Bot: {bot_choice} → {result}")
 
-# ---------------- Ship command (deterministic, non-random) ----------------
+# ---------------- Ship command ----------------
 def _letters_similarity_score(name1: str, name2: str) -> float:
-    # returns 0..20
     a = re.sub("[^a-z]", "", (name1 or "").lower())
     b = re.sub("[^a-z]", "", (name2 or "").lower())
     sa = set(a)
@@ -811,7 +851,6 @@ def _letters_similarity_score(name1: str, name2: str) -> float:
     return (inter / union) * 20.0
 
 def _mutual_guilds_score(user1_id: int, user2_id: int) -> float:
-    # returns 0..20 — count mutual guilds (cap at 5 for score scaling)
     count = 0
     for g in bot.guilds:
         try:
@@ -823,7 +862,6 @@ def _mutual_guilds_score(user1_id: int, user2_id: int) -> float:
     return (capped / 5.0) * 20.0
 
 def _role_overlap_score(member1: discord.Member | None, member2: discord.Member | None, current_guild: discord.Guild) -> float:
-    # returns 0..30 — only calculated if both are members of current guild
     if not isinstance(member1, discord.Member) or not isinstance(member2, discord.Member):
         return 0.0
     if member1.guild != current_guild or member2.guild != current_guild:
@@ -837,22 +875,18 @@ def _role_overlap_score(member1: discord.Member | None, member2: discord.Member 
     return (inter / len(union)) * 30.0
 
 def _account_age_score(u1, u2) -> float:
-    # returns 0..15 — higher if account creation dates are close
     if not hasattr(u1, "created_at") or not hasattr(u2, "created_at"):
         return 0.0
     diff_days = abs((u1.created_at - u2.created_at).days)
-    # If created within 30 days -> full 15, within a year -> scaled down, otherwise smaller
     if diff_days <= 30:
         return 15.0
     if diff_days <= 365:
         return 15.0 * (1 - (diff_days - 30) / (365 - 30))
-    # older difference: fade to 0 at 3 years
     if diff_days <= (365 * 3):
         return 15.0 * (1 - (diff_days - 365) / (365 * 2))
     return 0.0
 
 def _discriminator_score(u1, u2) -> float:
-    # returns 0..5
     d1 = getattr(u1, "discriminator", None)
     d2 = getattr(u2, "discriminator", None)
     if d1 and d2 and d1 == d2:
@@ -860,7 +894,6 @@ def _discriminator_score(u1, u2) -> float:
     return 0.0
 
 def compute_ship_score(u1, u2, ctx_guild: discord.Guild | None):
-    # Sum components
     name_score = _letters_similarity_score(getattr(u1, "name", getattr(u1, "display_name", str(u1))),
                                           getattr(u2, "name", getattr(u2, "display_name", str(u2))))
     mutual_score = _mutual_guilds_score(int(u1.id), int(u2.id))
@@ -871,7 +904,6 @@ def compute_ship_score(u1, u2, ctx_guild: discord.Guild | None):
     disc_score = _discriminator_score(u1, u2)
     total = name_score + mutual_score + role_score + age_score + disc_score
     total = max(0.0, min(100.0, total))
-    # Round values
     breakdown = {
         "name_letters": round(name_score, 2),
         "mutual_guilds": round(mutual_score, 2),
@@ -884,19 +916,13 @@ def compute_ship_score(u1, u2, ctx_guild: discord.Guild | None):
 
 @bot.command(name="ship")
 async def cmd_ship(ctx, user1: discord.User, user2: discord.User):
-    """
-    Deterministic 'ship' command — not random.
-    Usage: ?ship @user1 @user2
-    """
     try:
-        # compute
         breakdown = compute_ship_score(user1, user2, ctx.guild)
         score = breakdown["total"]
-        # friendly verdict
         if score >= 85:
             verdict = "wowzers yar guds ‹𝟹"
         elif score >= 65:
-            verdict = "yeh pretty gud ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧"
+            verdict = "yeh pretty gud ദ്ദि(˵ •̀ ᴗ - ˵ ) ✧"
         elif score >= 45:
             verdict = "well it could work ( ⸝⸝´꒳`⸝⸝)"
         elif score >= 25:
@@ -904,7 +930,6 @@ async def cmd_ship(ctx, user1: discord.User, user2: discord.User):
         else:
             verdict = "not gud (ᵕ—ᴗ—)"
 
-        # Compose ship name (deterministic): merge first halves of display names
         def _clean(name):
             return re.sub(r"\s+", "", str(name))
         n1 = _clean(user1.display_name if isinstance(user1, discord.Member) else getattr(user1, "name", str(user1)))
@@ -925,7 +950,7 @@ async def cmd_ship(ctx, user1: discord.User, user2: discord.User):
     except Exception as e:
         await safe_send(ctx, f"(･_･;) Could not compute ship: {e}")
 
-# ---------------- Games continued (Wordle etc.) ----------------
+# ---------------- Games (Wordle) ----------------
 @bot.command(name="wordle")
 async def cmd_wordle(ctx):
     word = random.choice(WORDLE_WORDS)
@@ -963,7 +988,6 @@ async def cmd_guess(ctx, guess: str):
         return await safe_send(ctx, f"(｡•́︿•̀｡) Out of attempts. The word was **{target}**.")
     await safe_send(ctx, f"{''.join(feedback)} — Attempts used: {state['attempts']}/6")
 
-# Snipe
 @bot.command(name="snipe")
 async def cmd_snipe(ctx):
     data = last_deleted_message.get(ctx.channel.id)
@@ -971,7 +995,6 @@ async def cmd_snipe(ctx):
         return await safe_send(ctx, "(・_・;) Nothing to snipe.")
     await safe_send(ctx, f"(¬‿¬) Last deleted by {data['author']}: {data['content']}")
 
-# Remindme
 @bot.command(name="remindme")
 async def cmd_remindme(ctx, when: str, *, message: str):
     unit = when[-1]
@@ -992,7 +1015,6 @@ async def cmd_remindme(ctx, when: str, *, message: str):
                 print(f"[remindme] failed to deliver reminder: {e}")
     bot.loop.create_task(do_remind())
 
-# Userinfo / Avatar
 @bot.command(name="userinfo")
 async def cmd_userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -1107,10 +1129,11 @@ async def resume_schedules():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    if not DISCORDTOKEN:
-        print("ERROR: set DISCORD_BOT_TOKEN in environment/secrets.")
+    if not DISCORD_TOKEN:
+        print("ERROR: set DISCORD_BOT_TOKEN (or DISCORDBOTTOKEN) in environment/secrets.")
     else:
         if PANEL_GUILD_ID:
             ensure_guild(PANEL_GUILD_ID)
         keep_alive()
-        bot.run(DISCORDTOKEN)
+        bot.run(DISCORD_TOKEN)
+PY
