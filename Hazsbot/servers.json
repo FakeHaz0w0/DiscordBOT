@@ -1,0 +1,113 @@
+{
+  "1111905614298357800": {
+    "warnings": {},
+    "mod_roles": [],
+    "auto_mod_enabled": true,
+    "scheduled_unbans": [],
+    "scheduled_unmutes": [],
+    "prefix": "?",
+    "categories": {
+      "music": true,
+      "fun": true,
+      "utility": true
+    },
+    "welcome_message": "Welcome {user}!",
+    "leave_message": "{user} left.",
+    "log_channels": {
+      "commands": 0,
+      "errors": 0,
+      "moderation": 0,
+      "music": 0,
+      "dashboard": 0,
+      "joins": 0
+    }
+  },
+  "1250772588783997081": {
+    "warnings": {
+      "1182976165510664202": [
+        {
+          "reason": "No reason provided",
+          "when": "2025-08-11T12:00:57.719474"
+        }
+      ]
+    },
+    "mod_roles": [
+      1256285820533473473
+    ],
+    "auto_mod_enabled": true,
+    "scheduled_unbans": [],
+    "scheduled_unmutes": [],
+    "prefix": "?",
+    "categories": {
+      "music": true,
+      "fun": true,
+      "utility": true
+    },
+    "welcome_message": "Welcome {user}!",
+    "leave_message": "{user} left.",
+    "log_channels": {
+      "commands": 0,
+      "errors": 0,
+      "moderation": 0,
+      "music": 0,
+      "dashboard": 0,
+      "joins": 0
+    }
+  },
+  "1345258797291274333": {
+    "warnings": {},
+    "mod_roles": [
+      1345265271279058964,
+      1345262235882098708
+    ],
+    "auto_mod_enabled": true,
+    "scheduled_unbans": [],
+    "scheduled_unmutes": [],
+    "prefix": "?",
+    "categories": {
+      "music": true,
+      "fun": true,
+      "utility": true
+    },
+    "welcome_message": "Welcome {user}!",
+    "leave_message": "{user} left.",
+    "log_channels": {
+      "commands": 0,
+      "errors": 0,
+      "moderation": 0,
+      "music": 0,
+      "dashboard": 0,
+      "joins": 0
+    }
+  },
+  "1412743207481118772": {
+    "warnings": {
+      "1182976165510664202": [
+        {
+          "reason": "No reason provided",
+          "when": "2025-09-04T09:14:37.583901"
+        }
+      ]
+    },
+    "mod_roles": [],
+    "auto_mod_enabled": true,
+    "scheduled_unbans": [],
+    "scheduled_unmutes": [],
+    "prefix": "?",
+    "categories": {
+      "music": true,
+      "fun": true,
+      "utility": true
+    },
+    "welcome_message": "Welcome {user}!",
+    "leave_message": "{user} left.",
+    "log_channels": {
+      "commands": 1412743208827359346,
+      "errors": 1412743822231867413,
+      "moderation": 1412743856654520360,
+      "music": 1412743892134006825,
+      "dashboard": 1412743921955639336,
+      "joins": 1412746940155691098
+    }
+  }
+}
