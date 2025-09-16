@@ -1,25 +1,14 @@
-cat > main.py <<'PY'
 # main.py — Hazsbot (single-file)
 # Features: Control Panel, Music link detection, Automod, Wordle, Ship, Moderation, AI (?ask)
 # Requirements: discord.py, aiohttp, psutil (optional), openai
 #
 # Usage:
-# 1. Install deps:
-#    pip install discord.py aiohttp psutil openai
-# 2. Create env vars (see .env.example below)
-# 3. Run:
-#    python3 main.py
-#
-# Environment variables expected (common names supported):
-#   DISCORD_BOT_TOKEN  (or DISCORDBOTTOKEN)
-#   DEEPSEEK_API_KEY   (or DEEPSEEKAPIKEY)
-#   PANEL_GUILD_ID     (optional)
-#   PANEL_OWNER_ID     (optional)
-#
-# NOTE: This file is the single-file "main" version of your merged Hazsbot code.
-#       Keep your tokens secret — do not publish main.py with real tokens.
+# 1. Install deps: pip install -r requirements.txt
+# 2. Configure env vars (see .env.example)
+# 3. Run: python3 main.py
 
 import os
+import sys
 import json
 import random
 import asyncio
@@ -62,9 +51,9 @@ except Exception:
 VERSION = "1.1.1"
 DATA_FILE = "servers.json"
 
-# Support both names just in case
-DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORDBOTTOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEKAPIKEY")
+# Accept a few env names for compatibility
+DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORDTOKEN") or os.getenv("DISCORDBOTTOKEN") or os.getenv("DISCORDTOKEN")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEKAPIKEY") or os.getenv("DEEPSEEKAPIKEY")
 
 def _int_env(name: str, default: int) -> int:
     v = os.getenv(name)
@@ -76,16 +65,16 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 # Panel ownership / binding (set these if you want a control server)
-PANEL_GUILD_ID = _int_env("PANEL_GUILD_ID", 1412743207481118772)
-PANEL_OWNER_ID = _int_env("PANEL_OWNER_ID", 1182976165510664202)
+PANEL_GUILD_ID = _int_env("PANEL_GUILD_ID", 0)
+PANEL_OWNER_ID = _int_env("PANEL_OWNER_ID", 0)
 
 PRESEED_LOG_CHANNELS = {
-    "commands": 1412743208827359346,
-    "errors":   1412743822231867413,
-    "moderation": 1412743856654520360,
-    "music": 1412743892134006825,
-    "dashboard": 1412743921955639336,
-    "joins": 1412746940155691098,
+    "commands": 0,
+    "errors":   0,
+    "moderation": 0,
+    "music": 0,
+    "dashboard": 0,
+    "joins": 0,
 }
 
 DEFAULT_PREFIX = "?"
@@ -113,7 +102,6 @@ server_data = load_data()
 
 # ---------------- BOT SETUP ----------------
 async def _prefix_callable(bot, message):
-    # function called to resolve per-server prefix
     if not message.guild:
         return DEFAULT_PREFIX
     gid = str(message.guild.id)
@@ -169,10 +157,6 @@ last_deleted_message = {}
 active_wordles = {}
 
 async def safe_send(destination, content=None, embed=None):
-    """
-    Helper that attempts to send either a content string or an embed and doesn't crash if sending fails.
-    destination can be a Context, TextChannel, Member (DM), etc.
-    """
     try:
         if embed:
             return await destination.send(embed=embed)
@@ -233,7 +217,7 @@ async def log_event(kind: str, content: str, embed: discord.Embed | None = None)
 
 # ---------------- AUTOMOD ----------------
 def check_profanity(text: str):
-    profanity = {"badword1", "badword2"}  # replace with real list
+    profanity = {"badword1", "badword2"}  # replace with actual list
     t = (text or "").lower()
     return any(p in t for p in profanity)
 
@@ -310,7 +294,6 @@ async def on_ready():
         await log_event("dashboard", "✅ Bot is online", embed)
     except Exception:
         pass
-    # resume any scheduled tasks persisted from before
     bot.loop.create_task(resume_schedules())
 
 @bot.event
@@ -456,7 +439,6 @@ async def get_ai_response(prompt, max_tokens=800, temperature=0.7):
                 timeout=30,
             )
         )
-        # depends on client lib shape
         return completion.choices[0].message.content.strip()
     except asyncio.TimeoutError:
         print("[get_ai_response] DeepSeek request timed out")
@@ -497,13 +479,12 @@ async def cmd_version(ctx):
     uptime = int(time.time() - start_time)
     h, rem = divmod(uptime, 3600)
     m, s = divmod(rem, 60)
-
     moderation = [
         "`?addmodrole @role` - add a mod role (admin only)",
         "`?removemodrole @role` - remove mod role (admin only)",
         "`?warn @user <reason>` - warn a user",
         "`?unwarn @user [index]` - remove a warning",
-            "`?list warnings|modroles` - list warns / mod roles",
+        "`?list warnings|modroles` - list warns / mod roles",
         "`?ban @user [minutes] <reason>` - ban (temp or perm)",
         "`?kick @user <reason>` - kick user",
         "`?mute @user [minutes] <reason>` - mute temporarily",
@@ -525,17 +506,14 @@ async def cmd_version(ctx):
         "`?avatar [@user]` - show avatar",
         "`?test` - run diagnostics",
     ]
-    music = [
-        "`?WIP` - dude idk WIP",
-    ]
+    music = ["`?WIP` - dude idk WIP"]
     panel = [
         "`?dashboard` - control panel (owner only)",
         "`?setlogchannel <type> #channel` - set log channel",
         "`?setprefix <prefix>` - set command prefix",
         "`?togglecategory <music|fun|utility>` - enable/disable features",
-        "`?setwelcome <msg>` / `?setleave <msg>` - welcome/leave messages",    
+        "`?setwelcome <msg>` / `?setleave <msg>` - welcome/leave messages",
     ]
-
     embed = discord.Embed(title=f"Bot v{VERSION}", color=discord.Color.blue())
     embed.add_field(name="Uptime", value=f"{h}h {m}m {s}s", inline=True)
     embed.add_field(name="Guilds", value=str(len(bot.guilds)), inline=True)
@@ -545,7 +523,6 @@ async def cmd_version(ctx):
     embed.add_field(name="Utility", value="\n".join(utility), inline=False)
     embed.add_field(name="Music", value="\n".join(music), inline=False)
     embed.add_field(name="Panel (Control Server)", value="\n".join(panel), inline=False)
-
     await safe_send(ctx, embed=embed)
 
 @bot.command(name="test")
@@ -811,7 +788,7 @@ async def cmd_audit(ctx, action: str = None):
     except Exception as e:
         await safe_send(ctx, f"(･_･;) Could not fetch audit logs: {e}")
 
-# Games & utilities
+# Games & utilities (dice/coin/rps etc.)
 @bot.command(name="dice")
 async def cmd_dice(ctx, max_number: int = 6):
     if max_number < 1:
@@ -838,7 +815,7 @@ async def cmd_rps(ctx, choice: str):
         result = "You lose!"
     await safe_send(ctx, f"(＾▽＾) You: {choice} | Bot: {bot_choice} → {result}")
 
-# ---------------- Ship command ----------------
+# Ship command (deterministic)
 def _letters_similarity_score(name1: str, name2: str) -> float:
     a = re.sub("[^a-z]", "", (name1 or "").lower())
     b = re.sub("[^a-z]", "", (name2 or "").lower())
@@ -922,7 +899,7 @@ async def cmd_ship(ctx, user1: discord.User, user2: discord.User):
         if score >= 85:
             verdict = "wowzers yar guds ‹𝟹"
         elif score >= 65:
-            verdict = "yeh pretty gud ദ്ദि(˵ •̀ ᴗ - ˵ ) ✧"
+            verdict = "yeh pretty gud ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧"
         elif score >= 45:
             verdict = "well it could work ( ⸝⸝´꒳`⸝⸝)"
         elif score >= 25:
@@ -950,7 +927,7 @@ async def cmd_ship(ctx, user1: discord.User, user2: discord.User):
     except Exception as e:
         await safe_send(ctx, f"(･_･;) Could not compute ship: {e}")
 
-# ---------------- Games (Wordle) ----------------
+# ---------------- Games continued (Wordle etc.) ----------------
 @bot.command(name="wordle")
 async def cmd_wordle(ctx):
     word = random.choice(WORDLE_WORDS)
@@ -1128,12 +1105,34 @@ async def resume_schedules():
                 print(f"[resume_schedules] unmute schedule error: {e}")
 
 # ---------------- RUN ----------------
+def print_env_summary():
+    # Safe summary for debugging (do NOT print tokens)
+    def present(name):
+        return bool(os.getenv(name))
+    print("=== ENV SUMMARY ===")
+    print("DISCORD_TOKEN present:", present("DISCORD_BOT_TOKEN") or present("DISCORDBOTTOKEN") or present("DISCORDTOKEN"))
+    print("DEEPSEEK_API_KEY present:", present("DEEPSEEK_API_KEY") or present("DEEPSEEKAPIKEY"))
+    print("PANEL_GUILD_ID:", os.getenv("PANEL_GUILD_ID"))
+    print("PANEL_OWNER_ID:", os.getenv("PANEL_OWNER_ID"))
+    print("===================")
+
 if __name__ == "__main__":
+    # Print useful diagnostics
+    print("Starting Hazsbot main.py")
+    print_env_summary()
+
     if not DISCORD_TOKEN:
-        print("ERROR: set DISCORD_BOT_TOKEN (or DISCORDBOTTOKEN) in environment/secrets.")
-    else:
+        print("ERROR: No Discord token found. Set DISCORD_BOT_TOKEN (or DISCORDTOKEN/DISCORDBOTTOKEN) in env/secrets.")
+        sys.exit(1)
+
+    try:
         if PANEL_GUILD_ID:
             ensure_guild(PANEL_GUILD_ID)
         keep_alive()
+        print("Launching bot...")
         bot.run(DISCORD_TOKEN)
-PY
+    except Exception as e:
+        print("[fatal] Bot crashed:", e)
+        tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        print(tb)
+        sys.exit(1)
