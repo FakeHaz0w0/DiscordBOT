@@ -43,7 +43,7 @@ VERSION = "1.1.1"  # bumped for ship addition
 DATA_FILE = "servers.json"
 
 DISCORD_TOKEN = os.getenv("DISCORDBOTTOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEE_APIKEY")  # required for ?ask
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEKAPIKEY")  # required for ?ask
 
 # Panel ownership / binding (set these!)
 PANEL_GUILD_ID = int(os.getenv("PANEL_GUILD_ID", "1412743207481118772"))  # control panel server ID
