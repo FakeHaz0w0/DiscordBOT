@@ -42,8 +42,8 @@ except Exception:
 VERSION = "1.1.1"  # bumped for ship addition
 DATA_FILE = "servers.json"
 
-DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")  # required for ?ask
+DISCORD_TOKEN = os.getenv("DISCORDBOTTOKEN")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEE_APIKEY")  # required for ?ask
 
 # Panel ownership / binding (set these!)
 PANEL_GUILD_ID = int(os.getenv("PANEL_GUILD_ID", "1412743207481118772"))  # control panel server ID
@@ -1107,10 +1107,10 @@ async def resume_schedules():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    if not DISCORD_TOKEN:
+    if not DISCORDTOKEN:
         print("ERROR: set DISCORD_BOT_TOKEN in environment/secrets.")
     else:
         if PANEL_GUILD_ID:
             ensure_guild(PANEL_GUILD_ID)
         keep_alive()
-        bot.run(DISCORD_TOKEN)
+        bot.run(DISCORDTOKEN)
