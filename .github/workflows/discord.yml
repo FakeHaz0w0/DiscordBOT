@@ -1,13 +1,13 @@
 name: Run Discord Bot
 
 on:
-  workflow_dispatch:   # allow manual runs
-  push:                # run on every push to any branch
+  workflow_dispatch:    # allow manual runs
+  push:                 # run on any push
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    # Maximum run time for the job (in minutes). Adjust as needed — GitHub limits apply.
+    # job-level timeout (adjust if needed; GitHub enforces limits)
     timeout-minutes: 360
 
     steps:
@@ -19,37 +19,60 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Determine requirements file
-        id: find-req
+      - name: Determine workdir (prefer DiscordBOT/Hazsbot)
+        id: find-workdir
         run: |
-          if [ -f requirements.txt ]; then
-            echo "REQ=requirements.txt" >> $GITHUB_ENV
-          elif [ -f Hazsbot/requirements.txt ]; then
-            echo "REQ=Hazsbot/requirements.txt" >> $GITHUB_ENV
-          elif [ -f DiscordBOT/requirements.txt ]; then
-            echo "REQ=DiscordBOT/requirements.txt" >> $GITHUB_ENV
-          else
-            echo "REQ=" >> $GITHUB_ENV
+          # Candidates checked in order
+          CANDIDATES=("DiscordBOT/Hazsbot" "Hazsbot" "DiscordBOT" ".")
+          FOUND=""
+          for d in "${CANDIDATES[@]}"; do
+            if [ -f "$d/main.py" ]; then
+              FOUND="$d"
+              break
+            fi
+          done
+          # if none had main.py, prefer the directory that exists
+          if [ -z "$FOUND" ]; then
+            for d in "${CANDIDATES[@]}"; do
+              if [ -d "$d" ]; then
+                FOUND="$d"
+                break
+              fi
+            done
           fi
+          # final fallback to repo root
+          if [ -z "$FOUND" ]; then
+            FOUND="."
+          fi
+          echo "WORKDIR=$FOUND" >> $GITHUB_ENV
+          echo "Selected workdir: $FOUND"
 
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt', 'Hazsbot/requirements.txt', 'DiscordBOT/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('DiscordBOT/Hazsbot/requirements.txt', 'Hazsbot/requirements.txt', 'requirements.txt') }}
 
-      - name: Install dependencies (if requirements.txt exists)
+      - name: Install dependencies (if requirements.txt exists in workdir)
         run: |
-          if [ -n "$REQ" ]; then
+          if [ -f "${WORKDIR}/requirements.txt" ]; then
             python -m pip install --upgrade pip
-            python -m pip install -r "$REQ"
+            python -m pip install -r "${WORKDIR}/requirements.txt"
           else
-            echo "No requirements.txt found — skipping dependency installation"
+            echo "No requirements.txt in ${WORKDIR} — skipping dependency install"
           fi
 
-      - name: Find and run bot
+      - name: Show selected workdir & quick runtime checks
+        run: |
+          echo "Working directory: ${WORKDIR}"
+          pwd
+          ls -la "${WORKDIR}"
+          python -c "import importlib.util, sys; print('Python', sys.version.split()[0]); print('discord installed:', importlib.util.find_spec('discord') is not None)"
+
+      - name: Run bot (from selected workdir)
+        working-directory: ${{ env.WORKDIR }}
         env:
-          # Map common secret names so your code can read any of them.
+          # map a variety of secret names you might've used (none of these get printed)
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORDBOTTOKEN: ${{ secrets.DISCORDBOTTOKEN }}
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -57,13 +80,11 @@ jobs:
           TOKEN: ${{ secrets.TOKEN }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          echo "Starting Hazsbot..."
-          if [ -f main.py ]; then
-            python main.py
-          elif [ -f Hazsbot/main.py ]; then
-            python Hazsbot/main.py
-          elif [ -f DiscordBOT/main.py ]; then
-            python DiscordBOT/main.py
-          else
-            echo "❌ Could not find main.py" && exit 1
-          fi
+          echo "Starting Hazsbot from ${WORKDIR}..."
+          # safe presence check (DOES NOT print any secret value)
+          if [ -n "$DISCORD_BOT_TOKEN" ]; then echo "DISCORD_BOT_TOKEN present: true"; else echo "DISCORD_BOT_TOKEN present: false"; fi
+          if [ -n "$DISCORDBOTTOKEN" ]; then echo "DISCORDBOTTOKEN present: true"; else echo "DISCORDBOTTOKEN present: false"; fi
+          if [ -n "$DISCORD_TOKEN" ]; then echo "DISCORD_TOKEN present: true"; else echo "DISCORD_TOKEN present: false"; fi
+          echo "Launching bot..."
+          # run the entrypoint found in the working directory
+          python main.py
