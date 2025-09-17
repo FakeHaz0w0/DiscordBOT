@@ -1,35 +1,42 @@
-name: Run Hazsbot
+name: Run Discord Bot
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:  # allows manual start from GitHub UI
+  workflow_dispatch:   # allow manual runs
+  push:                # run on every push
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
     steps:
-      # Checkout your repo
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.10'
 
-      # Install dependencies
-
-      # Run Hazsbot with secrets
-      - name: Run Hazsbot
-        env:
-          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
-          DEEPSEEKAPIKEY: ${{ secrets.DEEPSEEKAPIKEY }}
-          PANEL_GUILD_ID: ${{ secrets.PANEL_GUILD_ID }}
-          PANEL_OWNER_ID: ${{ secrets.PANEL_OWNER_ID }}
+      - name: Install dependencies (if requirements.txt exists)
         run: |
-          echo "Starting Hazsbot..."
-          python main.py || echo "❌ Bot crashed with exit code $?"
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          elif [ -f Hazsbot/requirements.txt ]; then
+            pip install -r Hazsbot/requirements.txt
+          elif [ -f DiscordBOT/requirements.txt ]; then
+            pip install -r DiscordBOT/requirements.txt
+          fi
+
+      - name: Find and run bot (keeps process alive)
+        env:
+          TOKEN: ${{ secrets.TOKEN }}
+        run: |
+          if [ -f main.py ]; then
+            python main.py
+          elif [ -f Hazsbot/main.py ]; then
+            python Hazsbot/main.py
+          elif [ -f DiscordBOT/main.py ]; then
+            python DiscordBOT/main.py
+          else
+            echo "❌ Could not find main.py" && exit 1
+          fi
+        timeout-minutes: 9999
