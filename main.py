@@ -82,6 +82,7 @@ DEFAULT_PREFIX = "?"
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
+intents.presences = True
 
 # ---------------- PERSISTENCE ----------------
 def load_data():
