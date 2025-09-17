@@ -1,42 +1,156 @@
-name: Run Discord Bot
+#!/usr/bin/env python3
+"""
+main.py — Robust Discord bot launcher
 
-on:
-  workflow_dispatch:   # allow manual runs
-  push:                # run on every push
+Features:
+- Detects multiple possible environment variable names for the bot token (priority order).
+- Prints an environment summary (booleans for important env vars) but NEVER prints the token value.
+- Provides a small `ping` command for testing.
+- Auto-restarts the bot if it crashes (exponential backoff).
+- Clear error messages with guidance for GitHub Actions secret mapping.
 
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+Drop this into your repo (replace any existing main.py) and commit.
+"""
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+import os
+import sys
+import asyncio
+import logging
+from typing import Optional, Tuple
 
-      - name: Install dependencies (if requirements.txt exists)
-        run: |
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          elif [ -f Hazsbot/requirements.txt ]; then
-            pip install -r Hazsbot/requirements.txt
-          elif [ -f DiscordBOT/requirements.txt ]; then
-            pip install -r DiscordBOT/requirements.txt
-          fi
+try:
+    import discord
+    from discord.ext import commands
+except Exception as e:
+    print("ERROR: discord.py is not installed. Run `pip install -U discord.py` or add it to requirements.txt.`")
+    raise
 
-      - name: Find and run bot (keeps process alive)
-        env:
-          TOKEN: ${{ secrets.TOKEN }}
-        run: |
-          if [ -f main.py ]; then
-            python main.py
-          elif [ -f Hazsbot/main.py ]; then
-            python Hazsbot/main.py
-          elif [ -f DiscordBOT/main.py ]; then
-            python DiscordBOT/main.py
-          else
-            echo "❌ Could not find main.py" && exit 1
-          fi
-        timeout-minutes: 9999
+# Priority list: higher priority names come first
+TOKEN_NAMES = [
+    "DISCORD_BOT_TOKEN",
+    "DISCORDBOTTOKEN",
+    "DISCORD_TOKEN",
+    "DISCORDTOKEN",
+    "TOKEN",
+    "BOTTOKEN",
+]
+
+OTHER_ENVS = [
+    "DEEPSEEK_API_KEY",
+    "PANEL_GUILD_ID",
+    "PANEL_OWNER_ID",
+]
+
+
+def find_token() -> Optional[Tuple[str, str]]:
+    """Return (env_name, token) for the first match in TOKEN_NAMES, or None."""
+    for name in TOKEN_NAMES:
+        val = os.getenv(name)
+        if val:
+            return name, val
+    return None
+
+
+def print_env_summary(chosen_name: Optional[str]):
+    print("=== ENV SUMMARY ===")
+    for name in TOKEN_NAMES:
+        print(f"{name}: {bool(os.getenv(name))}")
+    for name in OTHER_ENVS:
+        print(f"{name}: {os.getenv(name)}")
+    if chosen_name:
+        print(f"Using token from: {chosen_name}")
+    else:
+        print("No token found yet.")
+    print("===================")
+
+
+async def start_and_monitor(token: str):
+    """Start the bot and keep restarting on unhandled exceptions with backoff."""
+    logging.info("Starting monitor loop for the bot")
+
+    backoff = 5
+    max_backoff = 300
+
+    while True:
+        intents = discord.Intents.default()
+        # If you need message content, enable this and configure intents in the developer portal
+        intents.message_content = True
+
+        bot = commands.Bot(command_prefix="!", intents=intents)
+
+        @bot.event
+        async def on_ready():
+            logging.info(f"Logged in as: {bot.user} (id: {bot.user.id})")
+            print(f"Logged in as: {bot.user} (id: {bot.user.id})")
+
+        @bot.command(name="ping")
+        async def ping(ctx: commands.Context):
+            """Simple latency check."""
+            await ctx.reply("Pong!")
+
+        try:
+            logging.info("Running bot.start(...)")
+            # bot.start will handle reconnections for normal disconnects; this monitor catches crashes
+            await bot.start(token)
+            # If bot.start returned normally it means the bot was closed intentionally
+            logging.info("bot.start() returned — exiting monitor loop")
+            return
+        except KeyboardInterrupt:
+            logging.info("KeyboardInterrupt received — shutting down")
+            try:
+                await bot.close()
+            finally:
+                sys.exit(0)
+        except Exception:
+            logging.exception("Bot crashed unexpectedly. Will attempt to restart after backoff.")
+            try:
+                await bot.close()
+            except Exception:
+                pass
+            logging.info(f"Sleeping for {backoff} seconds before restart...")
+            await asyncio.sleep(backoff)
+            backoff = min(max_backoff, backoff * 2)
+            continue
+
+
+async def main():
+    # Basic logging
+    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+
+    # Check environment
+    token_tuple = find_token()
+    chosen_name = token_tuple[0] if token_tuple else None
+    print_env_summary(chosen_name)
+
+    if not token_tuple:
+        print("ERROR: No Discord token found in environment variables.")
+        print("Set one of these env vars (recommended: DISCORD_BOT_TOKEN):\n  " + ", ".join(TOKEN_NAMES))
+        print("")
+        print("If your secret in GitHub Actions is named `DISCORDBOTTOKEN` (no underscore), you can keep it and map it in the workflow like this:")
+        print("\n    - name: Find and run bot (keeps process alive)")
+        print("      env:")
+        print("        DISCORD_BOT_TOKEN: ${{ secrets.DISCORDBOTTOKEN }}")
+        print("      run: python main.py\n")
+        print("Exiting with code 1.")
+        sys.exit(1)
+
+    # Unpack chosen token
+    _, token = token_tuple
+
+    # Optional: read other important envs
+    panel_guild_id = os.getenv("PANEL_GUILD_ID")
+    panel_owner_id = os.getenv("PANEL_OWNER_ID")
+
+    # Show some of those values (but do NOT print the token itself)
+    logging.info(f"PANEL_GUILD_ID={panel_guild_id} PANEL_OWNER_ID={panel_owner_id}")
+
+    # Run the monitored loop
+    await start_and_monitor(token)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception:
+        logging.exception("Fatal error in main()")
+        sys.exit(1)
